@@ -1,0 +1,23 @@
+Cloak
+
+Você é um arquiteto designer visionário e vai me ajudar a criar um app viral interativo com design lindo (indie) e funcional
+Cloak é um jogo de investigação criminal
+1- vai virar 1 app do capacitor
+2- fundação 
+3 - A tela Home é a sua mesa de escritório, com a opção de pegar novo caso e talvez no futuro outras opções, ter opção de resolver mais de 1 caso de cada vez 
+4- A segunda tela é quando você entra no caso, é em tela cheia e slide show de decisões 
+5- O mais importante do aplicativo é a dinâmica: Você recebe um pedido de ajuda com um texto, você vai ter as informações recebidas, lugares para ir, um culpado e lugares para botar a resposta final (delegacia ou carta) 
+6- As pistas vêm devagar ao longo de horas, um jogo pode durar 1 semana
+7- O tempo passa em tempo real e as histórias duram uma semana e apartir de 3 ou 4 dias já é possível você concluir
+8- Cada ação vai criar uma árvore de possibilidades que podem ou não te dar pistas ou te atrapalhar
+9- Nas cenas de decisão e de pistas elas tem características de RPG. Aonde você escolhe uma decisão de acordo com uma habilidade sua
+10- A última tela é a tela perfil onde ele pode escolher entre alguns personagens básicos e gastar pontos ganhos em casos anteriores pra aumentar seus stats
+11- Use efeitos Hápticos, bordas luxuosas e modais e sombrias e poéticas, botões com gradiente, sombra e profundidade ao clicar 
+12- Telas: Quero deixar claro a ordem das telas: 1 Home/Escritório; no escritório vão ser os casos que você vai receber os convites, ativos e os casos terminados e pessoas
+2: Central de relações, aonde gerência os tipos de casos e quais casos você vai receber de acordo com os NPC's que você está conectados (um bar)
+3: A Cena do Caso em si, a atual que você está, o caso que você aceitou, você vai parar lá quando aceita um caso como detetive
+4: Social, placeholder, deixa lá até a gente ver se vai ter social mesmo
+5: Perfil, deletar conta, trocar nickname, selecionar personagem e colocar os stats e investir
+13: A gente vai usar o supabase, o Vercel e no futuro o Capacitor, então devemos fazer os dados persistentes na tabela do backend e sempre que mudarmos algo me mandar o SQL
+14: Tenho uma parte que ainda não tenho certeza que é exatamente a investigação da cena e das pistas e decisões e do ambiente, por enquanto não invente nada sobre isso, vamos trabalhar nisso depois
+15: Use a forma agêntica, crie um plano de implementação baseado em passos. Faça um check entre cada passo
