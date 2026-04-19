@@ -5,6 +5,8 @@ import type {
   StoryCase,
   VirtueKey
 } from "./types";
+import cityMapImage from "./assets/mapa.cidade.jpg";
+import cityFrameImage from "./assets/moldura.cidade.jpg";
 
 const now = Date.now();
 
@@ -280,8 +282,8 @@ export const defaultCaseScenes: SceneDefinition[] = [
   {
     id: CITY_SCENE_ID,
     name: "Cidade Vertical",
-    backgroundUrl:
-      "https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?auto=format&fit=crop&w=1400&q=80",
+    backgroundUrl: cityMapImage,
+    frameUrl: cityFrameImage,
     width: 1200,
     height: 2200,
     hitboxes: worldPlaces.map((place) => ({

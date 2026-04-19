@@ -62,12 +62,52 @@ body {
   margin-bottom: 1rem;
 }
 
+.bootSplash {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(20, 23, 29, 0.95), rgba(7, 8, 12, 0.98));
+  display: grid;
+  place-items: center;
+  gap: 0.7rem;
+  z-index: 50;
+  animation: bootOut 1.2s ease forwards;
+}
+
+.bootSplash p {
+  margin: 0;
+  font-family: "Cormorant Garamond", serif;
+  font-size: 1.5rem;
+  color: var(--gold);
+}
+
+.bootLogo {
+  width: min(34vw, 180px);
+  filter: drop-shadow(0 16px 30px rgba(0, 0, 0, 0.45));
+}
+
 .sigil {
   font-family: "Cormorant Garamond", serif;
   font-size: 1.7rem;
   letter-spacing: 0.08em;
   margin: 0;
   color: var(--gold);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.sigilLogo {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+}
+
+.homeLogo {
+  width: 76px;
+  height: 76px;
+  border-radius: 12px;
+  margin-bottom: 0.65rem;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
 }
 
 h1,
@@ -295,12 +335,41 @@ textarea {
   background-position: center;
 }
 
+.framedMap {
+  border: 1px solid rgba(217, 177, 111, 0.2);
+}
+
 .sceneScroll {
   max-height: 68vh;
   overflow: auto;
   border-radius: 18px;
   border: 1px solid rgba(217, 177, 111, 0.18);
   padding: 0.6rem;
+}
+
+.frameShell {
+  width: 100%;
+  aspect-ratio: 1200 / 2200;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  position: relative;
+}
+
+.frameViewport {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  top: 7.5%;
+  bottom: 8%;
+  overflow: auto;
+  border-radius: 8px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.frameViewport.panning {
+  cursor: grabbing;
 }
 
 .hitbox {
@@ -408,6 +477,19 @@ textarea {
   }
   to {
     transform: translateY(10px);
+  }
+}
+
+@keyframes bootOut {
+  0% {
+    opacity: 1;
+  }
+  78% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    visibility: hidden;
   }
 }
 

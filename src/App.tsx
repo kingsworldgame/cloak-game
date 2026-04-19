@@ -19,6 +19,7 @@ import {
   saveProfile
 } from "./storage";
 import type { DetectiveProfile, SceneDefinition, SceneHitbox, StoryCase, TabId, VirtueKey } from "./types";
+import logoImage from "./assets/logo.png";
 
 const tabLabel: Record<TabId, string> = {
   home: "Escritorio",
@@ -99,6 +100,7 @@ const finalDecisionOptions = [
 ];
 
 export function App() {
+  const [isBooting, setIsBooting] = useState(true);
   const [tab, setTab] = useState<TabId>("home");
   const [cases, setCases] = useState<StoryCase[]>(() => loadCases() ?? initialCases);
   const [profile, setProfile] = useState(() => ensureProfile(loadProfile()));
@@ -114,6 +116,11 @@ export function App() {
   const [cityZoom, setCityZoom] = useState(1.35);
   const [caseResolutionChoice, setCaseResolutionChoice] = useState<Record<string, string>>({});
   const [caseResolutionRoll, setCaseResolutionRoll] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const bootTimer = setTimeout(() => setIsBooting(false), 1200);
+    return () => clearTimeout(bootTimer);
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -361,10 +368,19 @@ export function App() {
 
   return (
     <div className="shell">
+      {isBooting && (
+        <div className="bootSplash">
+          <img src={logoImage} alt="Cloak" className="bootLogo" />
+          <p>Cloak</p>
+        </div>
+      )}
       <div className="ambient one" />
       <div className="ambient two" />
       <header className="top">
-        <p className="sigil">Cloak</p>
+        <p className="sigil">
+          <img src={logoImage} alt="Cloak logo" className="sigilLogo" />
+          <span>Cloak</span>
+        </p>
         <h1>A cidade nao dorme, ela confessa em fragmentos.</h1>
       </header>
 
@@ -373,6 +389,7 @@ export function App() {
           <section className="stack">
             <article className="card desk">
               <h2>Mesa do Detetive</h2>
+              <img src={logoImage} alt="Cloak logo" className="homeLogo" />
               <p>
                 Convites chegam em silencio. Aceite casos e navegue pela cidade vertical para abrir
                 cada ambiente.
@@ -781,7 +798,15 @@ function SceneStage({
   zoom
 }: SceneStageProps) {
   const areaRef = useRef<HTMLDivElement | null>(null);
+  const frameViewportRef = useRef<HTMLDivElement | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [pan, setPan] = useState<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startScrollLeft: number;
+    startScrollTop: number;
+  } | null>(null);
 
   useEffect(() => {
     function onPointerMove(event: PointerEvent) {
@@ -805,8 +830,12 @@ function SceneStage({
     }
 
     function onPointerUp(event: PointerEvent) {
-      if (!drag || event.pointerId !== drag.pointerId) return;
-      setDrag(null);
+      if (drag && event.pointerId === drag.pointerId) {
+        setDrag(null);
+      }
+      if (pan && event.pointerId === pan.pointerId) {
+        setPan(null);
+      }
     }
 
     window.addEventListener("pointermove", onPointerMove);
@@ -815,7 +844,7 @@ function SceneStage({
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
     };
-  }, [drag, onUpdateHitbox, scene.height, scene.width]);
+  }, [drag, onUpdateHitbox, pan, scene.height, scene.width]);
 
   function startDrag(event: ReactPointerEvent, hitbox: SceneHitbox, mode: "move" | "resize") {
     if (!devMode || !areaRef.current) return;
@@ -835,46 +864,88 @@ function SceneStage({
     onSelectHitbox(hitbox.id);
   }
 
+  function startPan(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!scene.frameUrl || zoom <= 1) return;
+    if (!frameViewportRef.current) return;
+    const target = event.target as HTMLElement;
+    if (target.closest(".hitbox")) return;
+    event.preventDefault();
+    setPan({
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startScrollLeft: frameViewportRef.current.scrollLeft,
+      startScrollTop: frameViewportRef.current.scrollTop
+    });
+  }
+
+  function movePan(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!pan || !frameViewportRef.current || event.pointerId !== pan.pointerId) return;
+    const dx = event.clientX - pan.startX;
+    const dy = event.clientY - pan.startY;
+    frameViewportRef.current.scrollLeft = pan.startScrollLeft - dx;
+    frameViewportRef.current.scrollTop = pan.startScrollTop - dy;
+  }
+
+  const canvas = (
+    <div
+      ref={areaRef}
+      className={scene.frameUrl ? "sceneArea framedMap" : "sceneArea"}
+      style={{
+        aspectRatio: `${scene.width} / ${scene.height}`,
+        backgroundImage: `linear-gradient(rgba(8, 8, 8, 0.3), rgba(8, 8, 8, 0.45)), url(${scene.backgroundUrl})`,
+        transform: `scale(${zoom})`,
+        transformOrigin: "top center"
+      }}
+    >
+      {scene.hitboxes.map((hitbox) => {
+        const isSelected = selectedHitboxId === hitbox.id;
+        return (
+          <button
+            key={hitbox.id}
+            className={`hitbox ${isSelected ? "selected" : ""} ${devMode ? "dev" : ""}`}
+            style={{
+              left: `${(hitbox.x / scene.width) * 100}%`,
+              top: `${(hitbox.y / scene.height) * 100}%`,
+              width: `${(hitbox.width / scene.width) * 100}%`,
+              height: `${(hitbox.height / scene.height) * 100}%`
+            }}
+            onPointerDown={(event) => startDrag(event, hitbox, "move")}
+            onClick={() => {
+              onSelectHitbox(hitbox.id);
+              onHitboxPlay(hitbox);
+            }}
+          >
+            <span>{hitbox.label}</span>
+            {devMode && (
+              <i
+                className="resizeKnob"
+                onPointerDown={(event) => startDrag(event, hitbox, "resize")}
+              />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  if (!scene.frameUrl) {
+    return <div className={zoom > 1 ? "sceneScroll" : ""}>{canvas}</div>;
+  }
+
   return (
     <div className={zoom > 1 ? "sceneScroll" : ""}>
-      <div
-        ref={areaRef}
-        className="sceneArea"
-        style={{
-          aspectRatio: `${scene.width} / ${scene.height}`,
-          backgroundImage: `linear-gradient(rgba(8, 8, 8, 0.3), rgba(8, 8, 8, 0.45)), url(${scene.backgroundUrl})`,
-          transform: `scale(${zoom})`,
-          transformOrigin: "top center"
-        }}
-      >
-        {scene.hitboxes.map((hitbox) => {
-          const isSelected = selectedHitboxId === hitbox.id;
-          return (
-            <button
-              key={hitbox.id}
-              className={`hitbox ${isSelected ? "selected" : ""} ${devMode ? "dev" : ""}`}
-              style={{
-                left: `${(hitbox.x / scene.width) * 100}%`,
-                top: `${(hitbox.y / scene.height) * 100}%`,
-                width: `${(hitbox.width / scene.width) * 100}%`,
-                height: `${(hitbox.height / scene.height) * 100}%`
-              }}
-              onPointerDown={(event) => startDrag(event, hitbox, "move")}
-              onClick={() => {
-                onSelectHitbox(hitbox.id);
-                onHitboxPlay(hitbox);
-              }}
-            >
-              <span>{hitbox.label}</span>
-              {devMode && (
-                <i
-                  className="resizeKnob"
-                  onPointerDown={(event) => startDrag(event, hitbox, "resize")}
-                />
-              )}
-            </button>
-          );
-        })}
+      <div className="frameShell" style={{ backgroundImage: `url(${scene.frameUrl})` }}>
+        <div
+          ref={frameViewportRef}
+          className={pan ? "frameViewport panning" : "frameViewport"}
+          onPointerDown={startPan}
+          onPointerMove={movePan}
+          onPointerUp={() => setPan(null)}
+          onPointerLeave={() => setPan(null)}
+        >
+          {canvas}
+        </div>
       </div>
     </div>
   );

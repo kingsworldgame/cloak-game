@@ -54,6 +54,7 @@ export interface SceneDefinition {
   id: string;
   name: string;
   backgroundUrl: string;
+  frameUrl?: string;
   width: number;
   height: number;
   hitboxes: SceneHitbox[];
