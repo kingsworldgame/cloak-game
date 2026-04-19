@@ -114,6 +114,8 @@ export function App() {
   const [sceneJsonDraft, setSceneJsonDraft] = useState("");
   const [sceneNotice, setSceneNotice] = useState("");
   const [cityZoom, setCityZoom] = useState(1.35);
+  const [worldZoom, setWorldZoom] = useState(1.2);
+  const [worldSelectedHitboxId, setWorldSelectedHitboxId] = useState<string | null>(null);
   const [caseResolutionChoice, setCaseResolutionChoice] = useState<Record<string, string>>({});
   const [caseResolutionRoll, setCaseResolutionRoll] = useState<Record<string, string>>({});
 
@@ -164,6 +166,10 @@ export function App() {
   const activeScene = useMemo(
     () => scenes.find((scene) => scene.id === selectedSceneId) ?? scenes[0] ?? null,
     [scenes, selectedSceneId]
+  );
+  const worldCityScene = useMemo(
+    () => defaultCaseScenes.find((scene) => scene.id === CITY_SCENE_ID) ?? null,
+    []
   );
   const selectedHitbox = useMemo(
     () => activeScene?.hitboxes.find((hitbox) => hitbox.id === selectedHitboxId) ?? null,
@@ -444,36 +450,48 @@ export function App() {
           <section className="stack">
             <article className="card">
               <h2>Mundo e Conexoes</h2>
-              <p>A mesma cidade vertical define os lugares investigaveis e as faccoes que movem os casos.</p>
+              <p>
+                Mapa oficial da cidade: moldura como borda fixa e mapa dentro, com zoom e arraste
+                interno.
+              </p>
             </article>
+
+            {worldCityScene && (
+              <article className="card">
+                <label className="field">
+                  Zoom do mapa ({worldZoom.toFixed(2)}x)
+                  <input
+                    type="range"
+                    min={1}
+                    max={2.2}
+                    step={0.05}
+                    value={worldZoom}
+                    onChange={(e) => setWorldZoom(Number(e.target.value))}
+                  />
+                </label>
+
+                <SceneStage
+                  scene={worldCityScene}
+                  devMode={false}
+                  selectedHitboxId={worldSelectedHitboxId}
+                  onSelectHitbox={setWorldSelectedHitboxId}
+                  onHitboxPlay={(hitbox) => {
+                    if (!hitbox.targetSceneId) return;
+                    setTab("case");
+                    setSelectedSceneId(hitbox.targetSceneId);
+                    if (!focusCase && activeCases[0]) setFocusCaseId(activeCases[0].id);
+                  }}
+                  onUpdateHitbox={() => {}}
+                  zoom={worldZoom}
+                />
+              </article>
+            )}
 
             {relationNotes.map((note) => (
               <article key={note} className="card muted">
                 <p>{note}</p>
               </article>
             ))}
-
-            <article className="card">
-              <div className="worldGrid">
-                {worldPlaces.map((place) => (
-                  <button
-                    key={place.id}
-                    className="worldPlace"
-                    onClick={() => {
-                      setTab("case");
-                      setSelectedSceneId(place.id);
-                      if (!focusCase && activeCases[0]) setFocusCaseId(activeCases[0].id);
-                    }}
-                  >
-                    <strong>{place.name}</strong>
-                    <small>
-                      {place.faction} | influencia {place.influence}
-                    </small>
-                    <em>risco {place.risk}</em>
-                  </button>
-                ))}
-              </div>
-            </article>
           </section>
         )}
 
