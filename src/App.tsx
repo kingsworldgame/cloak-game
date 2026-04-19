@@ -1,11 +1,28 @@
-import { useEffect, useMemo, useState } from "react";
-import { characters, initialCases, initialProfile, relationNotes } from "./data";
-import { loadCases, loadProfile, saveCases, saveProfile } from "./storage";
-import type { SkillKey, StoryCase, TabId } from "./types";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  characterVirtuePreset,
+  characters,
+  CITY_SCENE_ID,
+  defaultCaseScenes,
+  initialCases,
+  initialProfile,
+  relationNotes,
+  virtueLabels,
+  worldPlaces
+} from "./data";
+import {
+  loadCaseScenes,
+  loadCases,
+  loadProfile,
+  saveCaseScenes,
+  saveCases,
+  saveProfile
+} from "./storage";
+import type { DetectiveProfile, SceneDefinition, SceneHitbox, StoryCase, TabId, VirtueKey } from "./types";
 
 const tabLabel: Record<TabId, string> = {
   home: "Escritorio",
-  relations: "Relacoes",
+  relations: "Mundo",
   case: "Cena",
   social: "Social",
   profile: "Perfil"
@@ -29,11 +46,74 @@ function withUnlockedClues(storyCase: StoryCase): StoryCase {
   return { ...storyCase, clueCountUnlocked: unlocked };
 }
 
+function cloneScenes(): SceneDefinition[] {
+  return defaultCaseScenes.map((scene) => ({
+    ...scene,
+    hitboxes: scene.hitboxes.map((hitbox) => ({ ...hitbox }))
+  }));
+}
+
+function initialSceneMap(cases: StoryCase[]): Record<string, SceneDefinition[]> {
+  return cases.reduce<Record<string, SceneDefinition[]>>((acc, storyCase) => {
+    acc[storyCase.id] = cloneScenes();
+    return acc;
+  }, {});
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function d20Modifier(score: number): number {
+  return Math.floor((score - 10) / 2);
+}
+
+function pointCostForVirtue(score: number): number {
+  if (score >= 14) return 3;
+  if (score >= 12) return 2;
+  return 1;
+}
+
+function ensureProfile(raw: DetectiveProfile | null): DetectiveProfile {
+  if (!raw) return initialProfile;
+  if ("virtues" in raw && raw.virtues) return raw;
+  const legacySkills = (raw as DetectiveProfile & { skills?: Partial<Record<VirtueKey, number>> }).skills;
+  return {
+    nickname: raw.nickname ?? initialProfile.nickname,
+    characterId: raw.characterId ?? initialProfile.characterId,
+    points: raw.points ?? initialProfile.points,
+    virtues: {
+      ...initialProfile.virtues,
+      deduction: legacySkills?.deduction ?? initialProfile.virtues.deduction,
+      charisma: legacySkills?.charisma ?? initialProfile.virtues.charisma,
+      forensics: legacySkills?.forensics ?? initialProfile.virtues.forensics
+    }
+  };
+}
+
+const finalDecisionOptions = [
+  { id: "delegacia", label: "Encaminhar para Delegacia", virtue: "deduction" as VirtueKey, dc: 13 },
+  { id: "carta", label: "Enviar Carta Anonima", virtue: "stealth" as VirtueKey, dc: 14 },
+  { id: "confronto", label: "Confronto Final Direto", virtue: "composure" as VirtueKey, dc: 15 },
+  { id: "imprensa", label: "Vazar dossie para Imprensa", virtue: "charisma" as VirtueKey, dc: 13 }
+];
+
 export function App() {
   const [tab, setTab] = useState<TabId>("home");
   const [cases, setCases] = useState<StoryCase[]>(() => loadCases() ?? initialCases);
-  const [profile, setProfile] = useState(() => loadProfile() ?? initialProfile);
+  const [profile, setProfile] = useState(() => ensureProfile(loadProfile()));
   const [focusCaseId, setFocusCaseId] = useState<string | null>(null);
+  const [caseScenes, setCaseScenes] = useState<Record<string, SceneDefinition[]>>(
+    () => loadCaseScenes() ?? initialSceneMap(loadCases() ?? initialCases)
+  );
+  const [selectedSceneId, setSelectedSceneId] = useState<string | null>(CITY_SCENE_ID);
+  const [sceneDevMode, setSceneDevMode] = useState(false);
+  const [selectedHitboxId, setSelectedHitboxId] = useState<string | null>(null);
+  const [sceneJsonDraft, setSceneJsonDraft] = useState("");
+  const [sceneNotice, setSceneNotice] = useState("");
+  const [cityZoom, setCityZoom] = useState(1.35);
+  const [caseResolutionChoice, setCaseResolutionChoice] = useState<Record<string, string>>({});
+  const [caseResolutionRoll, setCaseResolutionRoll] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -48,6 +128,21 @@ export function App() {
 
   useEffect(() => saveCases(cases), [cases]);
   useEffect(() => saveProfile(profile), [profile]);
+  useEffect(() => saveCaseScenes(caseScenes), [caseScenes]);
+
+  useEffect(() => {
+    setCaseScenes((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const storyCase of cases) {
+        if (!next[storyCase.id]) {
+          next[storyCase.id] = cloneScenes();
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [cases]);
 
   const activeCases = useMemo(() => cases.filter((c) => c.status === "active"), [cases]);
   const inviteCases = useMemo(() => cases.filter((c) => c.status === "invite"), [cases]);
@@ -58,6 +153,30 @@ export function App() {
     [activeCases, focusCaseId]
   );
 
+  const scenes = useMemo(() => (focusCase ? caseScenes[focusCase.id] ?? [] : []), [caseScenes, focusCase]);
+  const activeScene = useMemo(
+    () => scenes.find((scene) => scene.id === selectedSceneId) ?? scenes[0] ?? null,
+    [scenes, selectedSceneId]
+  );
+  const selectedHitbox = useMemo(
+    () => activeScene?.hitboxes.find((hitbox) => hitbox.id === selectedHitboxId) ?? null,
+    [activeScene, selectedHitboxId]
+  );
+
+  useEffect(() => {
+    if (!focusCase) {
+      setSelectedSceneId(CITY_SCENE_ID);
+      return;
+    }
+    setSelectedSceneId(CITY_SCENE_ID);
+  }, [focusCase?.id]);
+
+  useEffect(() => {
+    if (!activeScene || !activeScene.hitboxes.some((hitbox) => hitbox.id === selectedHitboxId)) {
+      setSelectedHitboxId(activeScene?.hitboxes[0]?.id ?? null);
+    }
+  }, [activeScene, selectedHitboxId]);
+
   function acceptCase(id: string) {
     buzz();
     setCases((prev) =>
@@ -65,6 +184,7 @@ export function App() {
     );
     setTab("case");
     setFocusCaseId(id);
+    setSelectedSceneId(CITY_SCENE_ID);
   }
 
   function closeCase(id: string) {
@@ -73,14 +193,135 @@ export function App() {
     setProfile((prev) => ({ ...prev, points: prev.points + 2 }));
   }
 
-  function investPoint(skill: SkillKey) {
-    if (profile.points <= 0) return;
+  function investPoint(virtue: VirtueKey) {
+    const current = profile.virtues[virtue];
+    const cost = pointCostForVirtue(current);
+    if (profile.points < cost) return;
     buzz();
     setProfile((prev) => ({
       ...prev,
-      points: prev.points - 1,
-      skills: { ...prev.skills, [skill]: prev.skills[skill] + 1 }
+      points: prev.points - cost,
+      virtues: { ...prev.virtues, [virtue]: prev.virtues[virtue] + 1 }
     }));
+  }
+
+  function runFinalDecisionRoll(caseId: string) {
+    const decisionId = caseResolutionChoice[caseId];
+    const decision = finalDecisionOptions.find((item) => item.id === decisionId);
+    if (!decision) return;
+    const die = Math.floor(Math.random() * 20) + 1;
+    const mod = d20Modifier(profile.virtues[decision.virtue]);
+    const total = die + mod;
+    const result = total >= decision.dc ? "Sucesso no fechamento" : "Fechamento tenso";
+    setCaseResolutionRoll((prev) => ({
+      ...prev,
+      [caseId]: `${decision.label}: d20(${die}) + mod(${mod}) = ${total} vs DC ${decision.dc} -> ${result}`
+    }));
+    buzz(total < decision.dc);
+  }
+
+  function updateActiveScene(updater: (scene: SceneDefinition) => SceneDefinition) {
+    if (!focusCase || !activeScene) return;
+    setCaseScenes((prev) => {
+      const list = prev[focusCase.id] ?? [];
+      const nextList = list.map((scene) => (scene.id === activeScene.id ? updater(scene) : scene));
+      return { ...prev, [focusCase.id]: nextList };
+    });
+  }
+
+  function updateHitbox(hitboxId: string, updater: (hitbox: SceneHitbox) => SceneHitbox) {
+    updateActiveScene((scene) => ({
+      ...scene,
+      hitboxes: scene.hitboxes.map((hitbox) => (hitbox.id === hitboxId ? updater(hitbox) : hitbox))
+    }));
+  }
+
+  function createHitbox() {
+    if (!activeScene) return;
+    const id = `hb-${Math.random().toString(36).slice(2, 8)}`;
+    const newHitbox: SceneHitbox = {
+      id,
+      label: "Nova Interacao",
+      x: Math.round(activeScene.width * 0.35),
+      y: Math.round(activeScene.height * 0.35),
+      width: Math.round(activeScene.width * 0.2),
+      height: Math.round(activeScene.height * 0.2),
+      interaction: "inspect"
+    };
+    updateActiveScene((scene) => ({ ...scene, hitboxes: [...scene.hitboxes, newHitbox] }));
+    setSelectedHitboxId(id);
+    buzz();
+  }
+
+  function removeSelectedHitbox() {
+    if (!activeScene || !selectedHitbox) return;
+    updateActiveScene((scene) => ({
+      ...scene,
+      hitboxes: scene.hitboxes.filter((hitbox) => hitbox.id !== selectedHitbox.id)
+    }));
+    setSelectedHitboxId(null);
+    buzz();
+  }
+
+  async function copySceneJson() {
+    if (!activeScene) return;
+    const json = JSON.stringify(activeScene, null, 2);
+    await navigator.clipboard.writeText(json);
+    setSceneNotice("JSON da cena copiado.");
+  }
+
+  async function copyCityHitboxesJson() {
+    if (!focusCase) return;
+    const cityScene = (caseScenes[focusCase.id] ?? []).find((scene) => scene.id === CITY_SCENE_ID);
+    if (!cityScene) return;
+    const payload = {
+      sceneId: cityScene.id,
+      width: cityScene.width,
+      height: cityScene.height,
+      backgroundUrl: cityScene.backgroundUrl,
+      hitboxes: cityScene.hitboxes.map((hitbox) => ({
+        id: hitbox.id,
+        label: hitbox.label,
+        x: hitbox.x,
+        y: hitbox.y,
+        width: hitbox.width,
+        height: hitbox.height,
+        targetSceneId: hitbox.targetSceneId
+      }))
+    };
+    await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+    setSceneNotice("JSON dedicado dos hitboxes da cidade copiado.");
+  }
+
+  function applySceneJson() {
+    if (!activeScene || !focusCase || !sceneJsonDraft.trim()) return;
+    try {
+      const parsed = JSON.parse(sceneJsonDraft) as SceneDefinition;
+      if (!parsed.id || !Array.isArray(parsed.hitboxes)) {
+        setSceneNotice("JSON invalido.");
+        return;
+      }
+      setCaseScenes((prev) => {
+        const list = prev[focusCase.id] ?? [];
+        const nextList = list.map((scene) => (scene.id === activeScene.id ? parsed : scene));
+        return { ...prev, [focusCase.id]: nextList };
+      });
+      setSceneNotice("JSON aplicado.");
+      setSelectedSceneId(parsed.id);
+      setSceneJsonDraft("");
+    } catch {
+      setSceneNotice("JSON invalido.");
+    }
+  }
+
+  function onHitboxPlay(hitbox: SceneHitbox) {
+    if (sceneDevMode) return;
+    if (hitbox.targetSceneId) {
+      setSelectedSceneId(hitbox.targetSceneId);
+      setSceneNotice(`Entrada: ${hitbox.label}.`);
+      return;
+    }
+    setSceneNotice(`Interacao: ${hitbox.label}.`);
   }
 
   return (
@@ -98,8 +339,8 @@ export function App() {
             <article className="card desk">
               <h2>Mesa do Detetive</h2>
               <p>
-                Convites chegam em silencio. Alguns te chamam por nome. Outros testam sua fome
-                por verdade.
+                Convites chegam em silencio. Aceite casos e navegue pela cidade vertical para abrir
+                cada ambiente.
               </p>
             </article>
 
@@ -128,6 +369,7 @@ export function App() {
                     buzz();
                     setFocusCaseId(storyCase.id);
                     setTab("case");
+                    setSelectedSceneId(CITY_SCENE_ID);
                   }}
                 >
                   <span>
@@ -149,8 +391,8 @@ export function App() {
         {tab === "relations" && (
           <section className="stack">
             <article className="card">
-              <h2>Central de Relacoes</h2>
-              <p>Bar Alibi: onde o crime vira rumor e rumor vira oportunidade.</p>
+              <h2>Mundo e Conexoes</h2>
+              <p>A mesma cidade vertical define os lugares investigaveis e as faccoes que movem os casos.</p>
             </article>
 
             {relationNotes.map((note) => (
@@ -158,6 +400,28 @@ export function App() {
                 <p>{note}</p>
               </article>
             ))}
+
+            <article className="card">
+              <div className="worldGrid">
+                {worldPlaces.map((place) => (
+                  <button
+                    key={place.id}
+                    className="worldPlace"
+                    onClick={() => {
+                      setTab("case");
+                      setSelectedSceneId(place.id);
+                      if (!focusCase && activeCases[0]) setFocusCaseId(activeCases[0].id);
+                    }}
+                  >
+                    <strong>{place.name}</strong>
+                    <small>
+                      {place.faction} | influencia {place.influence}
+                    </small>
+                    <em>risco {place.risk}</em>
+                  </button>
+                ))}
+              </div>
+            </article>
           </section>
         )}
 
@@ -166,7 +430,7 @@ export function App() {
             {!focusCase && (
               <article className="card">
                 <h2>Cena do Caso</h2>
-                <p>Aceite um caso na Home para entrar na cena.</p>
+                <p>Aceite um caso na Home para entrar na cidade.</p>
               </article>
             )}
 
@@ -174,46 +438,193 @@ export function App() {
               <>
                 <article className="card full">
                   <h2>{focusCase.title}</h2>
-                  <p>
-                    Tempo real correndo: {daysSince(focusCase.createdAt)} dias desde a abertura.
-                  </p>
+                  <p>Tempo real: {daysSince(focusCase.createdAt)} dias desde a abertura.</p>
                   <p>
                     Pistas liberadas: {focusCase.clueCountUnlocked}/{focusCase.clueScheduleHours.length}
                   </p>
                 </article>
 
                 <article className="card">
-                  <h3>Slide de Decisao (RPG)</h3>
-                  <div className="choiceGrid">
-                    <button className="choice" onClick={() => buzz()}>
-                      Revisar documentos (Deduction {profile.skills.deduction})
-                    </button>
-                    <button className="choice" onClick={() => buzz()}>
-                      Interrogar contato (Charisma {profile.skills.charisma})
-                    </button>
-                    <button className="choice" onClick={() => buzz()}>
-                      Examinar vestigios (Forensics {profile.skills.forensics})
+                  <h3>Cidade e Ambientes</h3>
+                  <div className="sceneTopbar">
+                    <div className="pillRow">
+                      <button className="miniPill" onClick={() => setSelectedSceneId(CITY_SCENE_ID)}>
+                        Voltar para Cidade
+                      </button>
+                      <span className="sceneTag">{activeScene?.name}</span>
+                    </div>
+                    <button
+                      className={`miniPill ${sceneDevMode ? "active" : ""}`}
+                      onClick={() => setSceneDevMode((prev) => !prev)}
+                    >
+                      Modo Dev {sceneDevMode ? "ON" : "OFF"}
                     </button>
                   </div>
-                  <p className="tiny">
-                    A implementacao narrativa detalhada de pistas/cena foi preservada para a proxima
-                    fase, como combinado.
-                  </p>
+
+                  {activeScene?.id === CITY_SCENE_ID && (
+                    <label className="field">
+                      Zoom da cidade ({cityZoom.toFixed(2)}x)
+                      <input
+                        type="range"
+                        min={1}
+                        max={2.2}
+                        step={0.05}
+                        value={cityZoom}
+                        onChange={(e) => setCityZoom(Number(e.target.value))}
+                      />
+                    </label>
+                  )}
+
+                  {activeScene && (
+                    <SceneStage
+                      scene={activeScene}
+                      devMode={sceneDevMode}
+                      selectedHitboxId={selectedHitboxId}
+                      onSelectHitbox={setSelectedHitboxId}
+                      onHitboxPlay={onHitboxPlay}
+                      onUpdateHitbox={(id, patch) => {
+                        updateHitbox(id, (previous) => ({ ...previous, ...patch }));
+                      }}
+                      zoom={activeScene.id === CITY_SCENE_ID ? cityZoom : 1}
+                    />
+                  )}
+                  {sceneNotice && <p className="tiny">{sceneNotice}</p>}
                 </article>
 
+                {sceneDevMode && activeScene && (
+                  <article className="card">
+                    <h3>Editor de Hitbox (px)</h3>
+                    <label className="field">
+                      Background PNG/JPG URL
+                      <input
+                        value={activeScene.backgroundUrl}
+                        onChange={(e) => {
+                          const nextUrl = e.target.value;
+                          updateActiveScene((scene) => ({ ...scene, backgroundUrl: nextUrl }));
+                        }}
+                        placeholder="https://..."
+                      />
+                    </label>
+                    <div className="editorRow">
+                      <button className="miniPill" onClick={createHitbox}>
+                        + Hitbox
+                      </button>
+                      <button className="miniPill danger" onClick={removeSelectedHitbox}>
+                        - Hitbox Selecionada
+                      </button>
+                      <button className="miniPill" onClick={copySceneJson}>
+                        Copiar JSON
+                      </button>
+                      {activeScene.id === CITY_SCENE_ID && (
+                        <button className="miniPill" onClick={copyCityHitboxesJson}>
+                          Exportar JSON Hitboxes Cidade
+                        </button>
+                      )}
+                    </div>
+
+                    {selectedHitbox && (
+                      <div className="hitboxForm">
+                        <label className="field">
+                          Label
+                          <input
+                            value={selectedHitbox.label}
+                            onChange={(e) => {
+                              const label = e.target.value;
+                              updateHitbox(selectedHitbox.id, (hitbox) => ({ ...hitbox, label }));
+                            }}
+                          />
+                        </label>
+                        <label className="field">
+                          Ir para cena (id opcional)
+                          <input
+                            value={selectedHitbox.targetSceneId ?? ""}
+                            onChange={(e) => {
+                              const value = e.target.value.trim();
+                              updateHitbox(selectedHitbox.id, (hitbox) => ({
+                                ...hitbox,
+                                targetSceneId: value || undefined
+                              }));
+                            }}
+                            placeholder="hotel-aurora"
+                          />
+                        </label>
+                        <div className="coordGrid">
+                          {(["x", "y", "width", "height"] as const).map((field) => (
+                            <label key={field} className="field">
+                              {field}
+                              <input
+                                type="number"
+                                value={selectedHitbox[field]}
+                                onChange={(e) => {
+                                  const value = Number(e.target.value);
+                                  updateHitbox(selectedHitbox.id, (hitbox) => ({
+                                    ...hitbox,
+                                    [field]: Number.isFinite(value) ? value : 0
+                                  }));
+                                }}
+                              />
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <label className="field">
+                      Colar JSON da cena para aplicar
+                      <textarea
+                        className="jsonArea"
+                        value={sceneJsonDraft}
+                        onChange={(e) => setSceneJsonDraft(e.target.value)}
+                      />
+                    </label>
+                    <button className="miniPill" onClick={applySceneJson}>
+                      Aplicar JSON
+                    </button>
+                  </article>
+                )}
+
                 <article className="card">
-                  <h3>Encerramento</h3>
+                  <h3>Conclusao do Caso (decisoes finais)</h3>
                   <p>
-                    O caso pode ser concluido a partir do dia {focusCase.earliestSolveDay}. Antes
-                    disso, encerramento fica bloqueado.
+                    Decisoes aparecem apenas no fechamento. O caso pode encerrar a partir do dia{" "}
+                    {focusCase.earliestSolveDay}.
                   </p>
-                  <button
-                    className="primary"
-                    disabled={daysSince(focusCase.createdAt) < focusCase.earliestSolveDay}
-                    onClick={() => closeCase(focusCase.id)}
-                  >
-                    Entregar Resultado (Delegacia/Carta)
-                  </button>
+                  <div className="choiceGrid">
+                    {finalDecisionOptions.map((option) => (
+                      <button
+                        key={option.id}
+                        className={`choice ${caseResolutionChoice[focusCase.id] === option.id ? "active" : ""}`}
+                        onClick={() =>
+                          setCaseResolutionChoice((prev) => ({
+                            ...prev,
+                            [focusCase.id]: option.id
+                          }))
+                        }
+                      >
+                        {option.label} ({virtueLabels[option.virtue]} | DC {option.dc})
+                      </button>
+                    ))}
+                  </div>
+                  <div className="editorRow">
+                    <button
+                      className="miniPill"
+                      disabled={!caseResolutionChoice[focusCase.id]}
+                      onClick={() => runFinalDecisionRoll(focusCase.id)}
+                    >
+                      Rolar d20 da conclusao
+                    </button>
+                    <button
+                      className="primary"
+                      disabled={
+                        daysSince(focusCase.createdAt) < focusCase.earliestSolveDay ||
+                        !caseResolutionChoice[focusCase.id]
+                      }
+                      onClick={() => closeCase(focusCase.id)}
+                    >
+                      Encerrar Caso
+                    </button>
+                  </div>
+                  {caseResolutionRoll[focusCase.id] && <p className="tiny">{caseResolutionRoll[focusCase.id]}</p>}
                 </article>
               </>
             )}
@@ -252,7 +663,14 @@ export function App() {
                     className={`choice ${profile.characterId === char.id ? "active" : ""}`}
                     onClick={() => {
                       buzz();
-                      setProfile((prev) => ({ ...prev, characterId: char.id }));
+                      setProfile((prev) => ({
+                        ...prev,
+                        characterId: char.id,
+                        virtues: {
+                          ...initialProfile.virtues,
+                          ...characterVirtuePreset[char.id]
+                        }
+                      }));
                     }}
                   >
                     <strong>{char.name}</strong>
@@ -263,17 +681,18 @@ export function App() {
             </article>
 
             <article className="card">
-              <h3>Stats</h3>
+              <h3>Virtudes (escala d20)</h3>
               <div className="stats">
-                <button className="stat" onClick={() => investPoint("deduction")}>
-                  Deduction: {profile.skills.deduction}
-                </button>
-                <button className="stat" onClick={() => investPoint("charisma")}>
-                  Charisma: {profile.skills.charisma}
-                </button>
-                <button className="stat" onClick={() => investPoint("forensics")}>
-                  Forensics: {profile.skills.forensics}
-                </button>
+                {(Object.keys(profile.virtues) as VirtueKey[]).map((virtue) => {
+                  const score = profile.virtues[virtue];
+                  const mod = d20Modifier(score);
+                  const cost = pointCostForVirtue(score);
+                  return (
+                    <button key={virtue} className="stat" onClick={() => investPoint(virtue)}>
+                      {virtueLabels[virtue]}: {score} (mod {mod >= 0 ? `+${mod}` : mod}) | custo {cost}
+                    </button>
+                  );
+                })}
               </div>
             </article>
           </section>
@@ -294,6 +713,134 @@ export function App() {
           </button>
         ))}
       </nav>
+    </div>
+  );
+}
+
+interface SceneStageProps {
+  scene: SceneDefinition;
+  devMode: boolean;
+  selectedHitboxId: string | null;
+  onSelectHitbox: (id: string) => void;
+  onHitboxPlay: (hitbox: SceneHitbox) => void;
+  onUpdateHitbox: (id: string, patch: Partial<SceneHitbox>) => void;
+  zoom: number;
+}
+
+interface DragState {
+  hitboxId: string;
+  mode: "move" | "resize";
+  pointerId: number;
+  startSceneX: number;
+  startSceneY: number;
+  origin: SceneHitbox;
+}
+
+function SceneStage({
+  scene,
+  devMode,
+  selectedHitboxId,
+  onSelectHitbox,
+  onHitboxPlay,
+  onUpdateHitbox,
+  zoom
+}: SceneStageProps) {
+  const areaRef = useRef<HTMLDivElement | null>(null);
+  const [drag, setDrag] = useState<DragState | null>(null);
+
+  useEffect(() => {
+    function onPointerMove(event: PointerEvent) {
+      if (!drag || !areaRef.current) return;
+      const areaRect = areaRef.current.getBoundingClientRect();
+      const sceneX = ((event.clientX - areaRect.left) / areaRect.width) * scene.width;
+      const sceneY = ((event.clientY - areaRect.top) / areaRect.height) * scene.height;
+      const dx = sceneX - drag.startSceneX;
+      const dy = sceneY - drag.startSceneY;
+
+      if (drag.mode === "move") {
+        const x = clamp(drag.origin.x + dx, 0, scene.width - drag.origin.width);
+        const y = clamp(drag.origin.y + dy, 0, scene.height - drag.origin.height);
+        onUpdateHitbox(drag.hitboxId, { x: Math.round(x), y: Math.round(y) });
+        return;
+      }
+
+      const width = clamp(drag.origin.width + dx, 24, scene.width - drag.origin.x);
+      const height = clamp(drag.origin.height + dy, 24, scene.height - drag.origin.y);
+      onUpdateHitbox(drag.hitboxId, { width: Math.round(width), height: Math.round(height) });
+    }
+
+    function onPointerUp(event: PointerEvent) {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      setDrag(null);
+    }
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+    };
+  }, [drag, onUpdateHitbox, scene.height, scene.width]);
+
+  function startDrag(event: ReactPointerEvent, hitbox: SceneHitbox, mode: "move" | "resize") {
+    if (!devMode || !areaRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const areaRect = areaRef.current.getBoundingClientRect();
+    const sceneX = ((event.clientX - areaRect.left) / areaRect.width) * scene.width;
+    const sceneY = ((event.clientY - areaRect.top) / areaRect.height) * scene.height;
+    setDrag({
+      hitboxId: hitbox.id,
+      mode,
+      pointerId: event.pointerId,
+      startSceneX: sceneX,
+      startSceneY: sceneY,
+      origin: { ...hitbox }
+    });
+    onSelectHitbox(hitbox.id);
+  }
+
+  return (
+    <div className={zoom > 1 ? "sceneScroll" : ""}>
+      <div
+        ref={areaRef}
+        className="sceneArea"
+        style={{
+          aspectRatio: `${scene.width} / ${scene.height}`,
+          backgroundImage: `linear-gradient(rgba(8, 8, 8, 0.3), rgba(8, 8, 8, 0.45)), url(${scene.backgroundUrl})`,
+          transform: `scale(${zoom})`,
+          transformOrigin: "top center"
+        }}
+      >
+        {scene.hitboxes.map((hitbox) => {
+          const isSelected = selectedHitboxId === hitbox.id;
+          return (
+            <button
+              key={hitbox.id}
+              className={`hitbox ${isSelected ? "selected" : ""} ${devMode ? "dev" : ""}`}
+              style={{
+                left: `${(hitbox.x / scene.width) * 100}%`,
+                top: `${(hitbox.y / scene.height) * 100}%`,
+                width: `${(hitbox.width / scene.width) * 100}%`,
+                height: `${(hitbox.height / scene.height) * 100}%`
+              }}
+              onPointerDown={(event) => startDrag(event, hitbox, "move")}
+              onClick={() => {
+                onSelectHitbox(hitbox.id);
+                onHitboxPlay(hitbox);
+              }}
+            >
+              <span>{hitbox.label}</span>
+              {devMode && (
+                <i
+                  className="resizeKnob"
+                  onPointerDown={(event) => startDrag(event, hitbox, "resize")}
+                />
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -30,9 +30,9 @@ export async function pushProfile(userId: string, profile: DetectiveProfile): Pr
     nickname: profile.nickname,
     character_id: profile.characterId,
     points: profile.points,
-    deduction: profile.skills.deduction,
-    charisma: profile.skills.charisma,
-    forensics: profile.skills.forensics
+    deduction: profile.virtues.deduction,
+    charisma: profile.virtues.charisma,
+    forensics: profile.virtues.forensics
   });
   if (error) throw error;
 }

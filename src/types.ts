@@ -2,7 +2,15 @@ export type TabId = "home" | "relations" | "case" | "social" | "profile";
 
 export type CaseStatus = "invite" | "active" | "closed";
 
-export type SkillKey = "deduction" | "charisma" | "forensics";
+export type VirtueKey =
+  | "observation"
+  | "deduction"
+  | "charisma"
+  | "empathy"
+  | "forensics"
+  | "composure"
+  | "stealth"
+  | "intuition";
 
 export interface StoryCase {
   id: string;
@@ -21,7 +29,7 @@ export interface DetectiveProfile {
   nickname: string;
   characterId: string;
   points: number;
-  skills: Record<SkillKey, number>;
+  virtues: Record<VirtueKey, number>;
 }
 
 export interface CharacterOption {
@@ -29,4 +37,24 @@ export interface CharacterOption {
   name: string;
   mood: string;
   passive: string;
+}
+
+export interface SceneHitbox {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  targetSceneId?: string;
+  interaction?: "enter" | "inspect" | "talk";
+}
+
+export interface SceneDefinition {
+  id: string;
+  name: string;
+  backgroundUrl: string;
+  width: number;
+  height: number;
+  hitboxes: SceneHitbox[];
 }

@@ -205,6 +205,15 @@ input {
   padding: 0.7rem;
 }
 
+textarea {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--ink);
+  border: 1px solid rgba(217, 177, 111, 0.35);
+  border-radius: 12px;
+  padding: 0.7rem;
+  font-family: inherit;
+}
+
 .stats {
   display: grid;
   gap: 0.5rem;
@@ -218,6 +227,144 @@ input {
 .tiny {
   color: var(--muted);
   font-size: 0.84rem;
+}
+
+.sceneTopbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.pillRow {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.sceneTag {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.miniPill {
+  border: 1px solid rgba(217, 177, 111, 0.35);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--ink);
+  padding: 0.42rem 0.72rem;
+  cursor: pointer;
+}
+
+.miniPill.active {
+  background: linear-gradient(140deg, rgba(217, 177, 111, 0.26), rgba(109, 27, 31, 0.45));
+}
+
+.miniPill.danger {
+  border-color: rgba(212, 86, 90, 0.5);
+}
+
+.editorRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0.7rem 0 1rem;
+}
+
+.coordGrid {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.jsonArea {
+  min-height: 130px;
+  resize: vertical;
+}
+
+.sceneArea {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 18px;
+  border: 1px solid rgba(217, 177, 111, 0.25);
+  overflow: hidden;
+  position: relative;
+  background-size: cover;
+  background-position: center;
+}
+
+.sceneScroll {
+  max-height: 68vh;
+  overflow: auto;
+  border-radius: 18px;
+  border: 1px solid rgba(217, 177, 111, 0.18);
+  padding: 0.6rem;
+}
+
+.hitbox {
+  position: absolute;
+  border: 1px dashed rgba(217, 177, 111, 0.65);
+  background: rgba(18, 19, 24, 0.22);
+  color: #fff;
+  padding: 0.2rem;
+  border-radius: 8px;
+}
+
+.hitbox span {
+  display: inline-block;
+  font-size: 0.72rem;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 0.14rem 0.3rem;
+  border-radius: 6px;
+}
+
+.hitbox.dev {
+  cursor: move;
+}
+
+.hitbox.selected {
+  box-shadow: inset 0 0 0 2px rgba(217, 177, 111, 0.68);
+}
+
+.resizeKnob {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px 0 0 0;
+  background: rgba(217, 177, 111, 0.9);
+  cursor: nwse-resize;
+}
+
+.worldGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.6rem;
+}
+
+.worldPlace {
+  border: 1px solid rgba(217, 177, 111, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ink);
+  display: grid;
+  text-align: left;
+  gap: 0.2rem;
+  padding: 0.8rem;
+  cursor: pointer;
+}
+
+.worldPlace small {
+  color: var(--muted);
+}
+
+.worldPlace em {
+  color: var(--gold);
+  font-style: normal;
+  font-size: 0.82rem;
 }
 
 .tabs {
@@ -267,5 +414,9 @@ input {
 @media (max-width: 640px) {
   .tabs {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .coordGrid {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
   }
 }
