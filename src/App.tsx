@@ -274,23 +274,58 @@ export function App() {
     if (!focusCase) return;
     const cityScene = (caseScenes[focusCase.id] ?? []).find((scene) => scene.id === CITY_SCENE_ID);
     if (!cityScene) return;
-    const payload = {
-      sceneId: cityScene.id,
-      width: cityScene.width,
-      height: cityScene.height,
-      backgroundUrl: cityScene.backgroundUrl,
-      hitboxes: cityScene.hitboxes.map((hitbox) => ({
+    const placesById = new Map(worldPlaces.map((place) => [place.id, place]));
+    const classifyLayer = (yCenter: number): "upper" | "mid" | "lower" => {
+      const ratio = yCenter / cityScene.height;
+      if (ratio < 0.34) return "upper";
+      if (ratio < 0.68) return "mid";
+      return "lower";
+    };
+
+    const hitboxes = cityScene.hitboxes.map((hitbox) => {
+      const place = hitbox.targetSceneId ? placesById.get(hitbox.targetSceneId) : undefined;
+      const yCenter = hitbox.y + hitbox.height / 2;
+      return {
         id: hitbox.id,
         label: hitbox.label,
         x: hitbox.x,
         y: hitbox.y,
         width: hitbox.width,
         height: hitbox.height,
-        targetSceneId: hitbox.targetSceneId
-      }))
+        targetSceneId: hitbox.targetSceneId,
+        layer: classifyLayer(yCenter),
+        place: place
+          ? {
+              id: place.id,
+              name: place.name,
+              faction: place.faction,
+              influence: place.influence,
+              risk: place.risk,
+              aftermathHint: place.aftermathHint
+            }
+          : null
+      };
+    });
+
+    const payload = {
+      version: "2.0.0",
+      cityName: "Cloak - Cidade Vertical",
+      exportedAt: new Date().toISOString(),
+      scene: {
+        id: cityScene.id,
+        width: cityScene.width,
+        height: cityScene.height,
+        backgroundUrl: cityScene.backgroundUrl
+      },
+      layers: {
+        upper: hitboxes.filter((hitbox) => hitbox.layer === "upper"),
+        mid: hitboxes.filter((hitbox) => hitbox.layer === "mid"),
+        lower: hitboxes.filter((hitbox) => hitbox.layer === "lower")
+      },
+      hitboxes
     };
     await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
-    setSceneNotice("JSON dedicado dos hitboxes da cidade copiado.");
+    setSceneNotice("JSON v2 da cidade copiado (com layers e metadados).");
   }
 
   function applySceneJson() {
